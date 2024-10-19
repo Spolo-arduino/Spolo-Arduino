@@ -1,0 +1,148 @@
+#include <Adafruit_GFX.h>    // Bibliothèque graphique
+#include <Adafruit_TFTLCD.h> // Bibliothèque pour l'écran TFT
+#include <TouchScreen.h>     // Bibliothèque pour gérer l'écran tactile
+
+#define LCD_CS A3
+#define LCD_CD A2
+#define LCD_WR A1
+#define LCD_RD A0
+#define LCD_RESET A4
+
+#define YP A3
+#define XM A2
+#define YM 9
+#define XP 8
+
+// Configuration des touches tactiles
+#define TS_MINX 122
+#define TS_MINY 111
+#define TS_MAXX 942
+#define TS_MAXY 890
+
+Adafruit_TFTLCD tft(LCD_CS, LCD_CD, LCD_WR, LCD_RD, LCD_RESET);
+TouchScreen ts = TouchScreen(XP, YP, XM, YM, 300);
+
+// Définition des couleurs
+#define BLACK   0x0000
+#define WHITE   0xFFFF
+#define RED     0xF800
+#define GREEN   0x07E0
+#define BLUE    0x001F
+#define YELLOW  0xFFE0
+#define CYAN    0x07FF
+#define MAGENTA 0xF81F
+
+// Variables pour le chronomètre
+unsigned long startTime; // Temps de départ
+int initialHours = 19;   // Heures initiales
+int initialMinutes = 10;  // Minutes initiales
+
+// Variables pour la gestion de l'affichage du chronomètre
+int lastChronoHours = -1;   // Dernière heure du chronomètre affichée
+int lastChronoMinutes = -1;  // Dernière minute du chronomètre affichée
+int lastChronoSeconds = -1;  // Dernière seconde du chronomètre affichée
+
+void generateGradient() {
+  for (int y = 0; y < 480; y++) {
+    for (int x = 0; x < 320; x++) {
+      // Interpolation de couleur basée sur les coordonnées
+      uint8_t blue = map(x + y, 0, 320 + 480, 31, 255); // Augmenter le bleu
+      uint8_t green = map(x + y, 0, 320 + 480, 0, 127); // Augmenter le vert
+      uint16_t color = tft.color565(0, green, blue);
+      tft.drawPixel(x, y, color); // Dessiner chaque pixel avec la couleur calculée
+    }
+  }
+}
+
+void setup() {
+  Serial.begin(9600);  // Initialiser la communication série
+
+  pinMode(LED_BUILTIN, OUTPUT);  // Configurer la LED intégrée comme sortie
+  tft.reset();
+  uint16_t identifier = tft.readID();
+
+  if (identifier == 0x0 || identifier == 0xFFFF) {
+    // Si aucun écran n'est détecté, afficher un message dans la console
+    Serial.println("ERREUR : Aucun écran détecté !");
+    
+    // Faire clignoter la LED une fois
+    digitalWrite(LED_BUILTIN, HIGH);  // Allumer la LED
+    delay(1000);                      // Attendre 1 seconde
+    digitalWrite(LED_BUILTIN, LOW);   // Éteindre la LED
+    delay(1000);                      // Attendre 1 seconde
+    
+    // Attendre 3 secondes avant de redémarrer
+    delay(3000);
+    // Redémarrage
+    asm volatile ("jmp 0");
+  } else {
+    // Si l'écran est connecté, éteindre la LED et afficher le dégradé
+    digitalWrite(LED_BUILTIN, LOW);
+    tft.begin(identifier);
+    tft.setRotation(0);  // Mode portrait
+    tft.fillScreen(BLACK);
+
+    // Générer le dégradé
+    generateGradient();
+    
+    // Initialiser le chronomètre
+    startTime = millis(); // Démarrer le chronomètre
+  }
+}
+
+void loop() {
+  // Afficher le chronomètre en haut de l'écran
+  displayChrono();
+
+  // Ajouter ici d'autres fonctionnalités si besoin
+}
+
+// Fonction pour afficher le chronomètre
+void displayChrono() {
+  // Calcul du temps écoulé
+  unsigned long currentTime = millis() - startTime;
+  
+  // Calcul des heures, minutes et secondes
+  unsigned long totalSeconds = (currentTime / 1000); // Temps total en secondes
+  int hours = initialHours + (totalSeconds / 3600);  // Ajouter les heures
+  int minutes = initialMinutes + ((totalSeconds / 60) % 60);  // Minutes écoulées
+  int seconds = totalSeconds % 60; // Secondes écoulées
+
+  // Ajuster les heures si elles dépassent 23
+  if (hours >= 24) {
+      hours -= 24;
+  }
+
+  // Vérifier si le temps a changé
+  if (hours != lastChronoHours || minutes != lastChronoMinutes || seconds != lastChronoSeconds) {
+    // Effacer la zone où le chronomètre sera affiché
+    tft.fillRect(0, 0, 320, 30, BLACK); // Nettoyer l'ancien affichage
+
+    // Afficher le chronomètre
+    tft.setTextColor(WHITE, BLACK);  // Texte blanc, fond noir
+    tft.setTextSize(2); // Taille du texte
+    tft.setCursor(10, 5); // Position du texte
+
+    // Afficher les heures
+    if (hours < 10) tft.print("0");
+    tft.print(hours);
+    tft.print(":");
+
+    // Afficher les minutes
+    if (minutes < 10) tft.print("0");
+    tft.print(minutes);
+    tft.print(":");
+
+    // Afficher les secondes
+    if (seconds < 10) tft.print("0");
+    tft.print(seconds);
+
+    // Mettre à jour les valeurs affichées
+    lastChronoHours = hours;
+    lastChronoMinutes = minutes;
+    lastChronoSeconds = seconds;
+
+    // Dessiner une barre pour séparer le chronomètre du reste de l'interface
+    tft.fillRect(0, 30, 320, 2, WHITE); // Barrière blanche en bas de la zone du chronomètre
+  }
+}
