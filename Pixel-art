@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Convertisseur Pixel Art en Code Arduino</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            padding: 20px;
+        }
+        button {
+            padding: 10px 15px;
+            font-size: 16px;
+            margin-right: 10px;
+        }
+        .result {
+            margin-top: 10px;
+            font-weight: bold;
+            white-space: pre-wrap;
+            background-color: #f0f0f0;
+            padding: 10px;
+            border: 1px solid #ccc;
+        }
+        .emulator {
+            display: grid;
+            margin-top: 10px;
+            grid-gap: 2px;
+        }
+        .pixel {
+            width: 20px;
+            height: 20px;
+            border: 1px solid #ccc;
+            background-color: white;
+            cursor: pointer;
+        }
+        .color-selector {
+            display: flex;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+        .size-selector {
+            margin-bottom: 10px;
+        }
+        .color-palette {
+            display: flex;
+            margin-top: 10px;
+        }
+        .color-palette div {
+            width: 30px;
+            height: 30px;
+            border: 1px solid #ccc;
+            margin-right: 5px;
+            cursor: pointer;
+        }
+        textarea {
+            width: 100%;
+            height: 80px;
+        }
+    </style>
+</head>
+<body>
+
+    <h1>Convertisseur Pixel Art en Code Arduino</h1>
+
+    <!-- Palette de couleurs au-dessus du tableau -->
+    <div id="colorSelectors"></div>
+    <div id="colorPaletteContainer">
+        <label for="colorPalette">Palette de Couleurs :</label>
+        <div id="colorPalette" class="color-palette"></div>
+    </div>
+
+    <!-- Sélecteur de taille du tableau -->
+    <label for="sizeSelector">Sélectionnez la taille du tableau :</label>
+    <select id="sizeSelector" class="size-selector">
+        <option value="4">4x4</option>
+        <option value="8" selected>8x8</option>
+        <option value="16">16x16</option>
+        <option value="32">32x32</option>
+        <option value="64">64x64</option>
+    </select>
+
+    <!-- Génération du code Arduino -->
+    <div style="margin-top: 10px;">
+        <button onclick="convert()">Convertir en Arduino</button>
+        <button onclick="copyResult()">Copier le code Arduino</button>
+    </div>
+
+    <!-- Résultat du code Arduino -->
+    <div class="result" id="result"></div>
+
+    <!-- Emulateur de Pixel Art -->
+    <div id="emulator" class="emulator"></div>
+
+    <script>
+        const defaultColors = [
+            '#FFFFFF', // Blanc
+            '#FF0000', // Rouge
+            '#00FF00', // Vert
+            '#0000FF', // Bleu
+            '#FFFF00', // Jaune
+            '#FF00FF', // Magenta
+            '#00FFFF', // Cyan
+            '#000000'  // Noir
+        ];
+
+        const colorDefinitions = {
+            '#FFFFFF': 0, // Blanc
+            '#FF0000': 1, // Rouge
+            '#00FF00': 2, // Vert
+            '#0000FF': 3, // Bleu
+            '#FFFF00': 4, // Jaune
+            '#FF00FF': 5, // Magenta
+            '#00FFFF': 6, // Cyan
+            '#000000': 7  // Noir
+        };
+
+        let currentColor = '#FFFFFF'; // Couleur actuelle pour le dessin
+        let isMouseDown = false;
+
+        // Initialiser le tableau des pixels
+        window.onload = function() {
+            createEmulator(8);
+            updateColorPalette();
+        }
+
+        document.getElementById('sizeSelector').addEventListener('change', function() {
+            const size = parseInt(this.value);
+            createEmulator(size);
+        });
+
+        function createEmulator(size) {
+            const emulator = document.getElementById('emulator');
+            emulator.innerHTML = '';
+            emulator.style.gridTemplateColumns = `repeat(${size}, 20px)`;
+
+            for (let i = 0; i < size * size; i++) {
+                const pixelDiv = document.createElement('div');
+                pixelDiv.className = 'pixel';
+                pixelDiv.style.backgroundColor = 'white';
+                pixelDiv.addEventListener('mousedown', function() {
+                    isMouseDown = true;
+                    pixelDiv.style.backgroundColor = currentColor;
+                    updateArduinoCode();
+                });
+                pixelDiv.addEventListener('mouseup', function() {
+                    isMouseDown = false;
+                });
+                pixelDiv.addEventListener('mouseover', function() {
+                    if (isMouseDown) {
+                        pixelDiv.style.backgroundColor = currentColor;
+                        updateArduinoCode();
+                    }
+                });
+                emulator.appendChild(pixelDiv);
+            }
+
+            document.addEventListener('mouseup', () => {
+                isMouseDown = false;
+            });
+        }
+
+        function updateColorPalette() {
+            const colorPalette = document.getElementById('colorPalette');
+            colorPalette.innerHTML = ''; // Clear palette before appending
+            defaultColors.forEach(color => {
+                const colorDiv = document.createElement('div');
+                colorDiv.style.backgroundColor = color;
+                colorDiv.addEventListener('click', function() {
+                    currentColor = color;
+                    highlightSelectedColor(colorDiv);
+                });
+                colorPalette.appendChild(colorDiv);
+            });
+        }
+
+        function convert() {
+            const emulator = document.getElementById('emulator');
+            const pixels = Array.from(emulator.children);
+            const size = Math.sqrt(pixels.length);
+            let pixelArray = `byte pixelArt[${size}][${size}] = {\n`;
+            const lines = [];
+
+            for (let i = 0; i < size; i++) {
+                const row = [];
+                for (let j = 0; j < size; j++) {
+                    const pixel = pixels[i * size + j];
+                    const color = pixel.style.backgroundColor;
+                    const value = getColorValue(color);
+                    row.push(value);
+                }
+                lines.push(`  {${row.join(',')}}`);
+            }
+
+            pixelArray += lines.join(',\n');
+            pixelArray += '\n};\n';
+
+            const arduinoCode = `#include <Adafruit_GFX.h>\n#include <Adafruit_TFTLCD.h>\n\n` +
+                `#define LCD_CS A3\n#define LCD_CD A2\n#define LCD_WR A1\n#define LCD_RD A0\n#define LCD_RESET A4\n\n` +
+                `Adafruit_TFTLCD tft(LCD_CS, LCD_CD, LCD_WR, LCD_RD, LCD_RESET);\n\n` +
+                `#define WHITE 0xFFFF\n#define RED 0xF800\n#define GREEN 0x07E0\n#define BLUE 0x001F\n` +
+                `#define YELLOW 0xFFE0\n#define MAGENTA 0xF81F\n#define CYAN 0x07FF\n#define BLACK 0x0000\n\n` + // Définition des couleurs
+                `void setup() {\n  tft.reset();\n  tft.begin(0x9341);\n` +
+                `  tft.setRotation(1);\n  tft.fillScreen(BLACK);\n\n` +
+                `  int pixelSize = 10;\n` +
+                `${pixelArray}` +
+                `  for (int i = 0; i < ${size}; i++) {\n    for (int j = 0; j < ${size}; j++) {\n` +
+                `      uint16_t color = getColor(pixelArt[i][j]);\n      tft.fillRect(j * pixelSize, i * pixelSize, pixelSize, pixelSize, color);\n    }\n  }\n}\n\n` +
+                `uint16_t getColor(byte value) {\n  switch (value) {\n    case 0: return WHITE;\n` +
+                `    case 1: return RED;\n    case 2: return GREEN;\n    case 3: return BLUE;\n    case 4: return YELLOW;\n` +
+                `    case 5: return MAGENTA;\n    case 6: return CYAN;\n    case 7: return BLACK;\n    default: return WHITE;\n  }\n}\n\n` +
+                `void loop() {}\n`;
+
+            document.getElementById('result').textContent = arduinoCode;
+        }
+
+        function getColorValue(color) {
+            const rgba = color.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/);
+            if (rgba) {
+                const r = parseInt(rgba[1], 10);
+                const g = parseInt(rgba[2], 10);
+                const b = parseInt(rgba[3], 10);
+                const rgbHex = `#${((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1).toUpperCase()}`;
+                return colorDefinitions[rgbHex] || 0;
+            }
+            return 0;
+        }
+
+        function copyResult() {
+            const resultText = document.getElementById('result').textContent;
+            navigator.clipboard.writeText(resultText).then(() => {
+                alert('Le code Arduino a été copié dans le presse-papiers !');
+            }).catch(err => {
+                console.error('Erreur lors de la copie: ', err);
+            });
+        }
+
+        function highlightSelectedColor(selectedDiv) {
+            document.querySelectorAll('.color-palette div').forEach(div => {
+                div.style.border = '1px solid #ccc'; 
+            });
+            selectedDiv.style.border = '3px solid black'; 
+        }
+    </script>
+</body>
+</html>
